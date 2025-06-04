@@ -58,9 +58,9 @@ check_docker_installed() {
         local docker_version
         docker_version=$(docker --version 2>/dev/null || echo "不明")
         print_info "Docker は既にインストールされています: $docker_version"
-        return 0
+        exit 0
     else
-        return 1
+        exit 1
     fi
 }
 
@@ -70,9 +70,9 @@ check_docker_compose_installed() {
         local compose_version
         compose_version=$(docker compose version --short 2>/dev/null || echo "不明")
         print_info "Docker Compose は既にインストールされています: $compose_version"
-        return 0
+        exit 0
     else
-        return 1
+        exit 1
     fi
 }
 
@@ -83,7 +83,7 @@ install_docker() {
     # Dockerがすでにインストールされているかチェック
     if check_docker_installed; then
         print_success "Dockerのインストールをスキップします"
-        return 0
+        exit 0
     fi
 
     # Dockerの公式インストールスクリプトを実行
@@ -124,7 +124,7 @@ verify_docker() {
 
     if ! command -v docker &> /dev/null; then
         print_error "Dockerがインストールされていません"
-        return 1
+        exit 1
     fi
 
     # Dockerデーモンが動作しているかチェック
@@ -134,11 +134,11 @@ verify_docker() {
         echo "  1. sudo systemctl start docker"
         echo "  2. sudo usermod -aG docker \$USER"
         echo "  3. newgrp docker または再ログイン"
-        return 1
+        exit 1
     fi
 
     print_success "Dockerが正常に動作しています"
-    return 0
+    exit 0
 }
 
 # Docker Composeの最新バージョンを取得
@@ -163,7 +163,7 @@ install_docker_compose() {
     # Docker Composeがすでにインストールされているかチェック
     if check_docker_compose_installed; then
         print_success "Docker Composeのインストールをスキップします"
-        return 0
+        exit 0
     fi
 
     local plugin_dir="$HOME/.docker/cli-plugins"
@@ -206,10 +206,10 @@ verify_docker_compose() {
         echo "  docker compose logs       # ログを表示"
         echo "  docker compose ps         # 実行中のコンテナを表示"
         echo "  docker compose restart    # サービスを再起動"
-        return 0
+        exit 0
     else
         print_error "Docker Composeのインストール確認に失敗しました"
-        return 1
+        exit 1
     fi
 }
 
@@ -221,7 +221,7 @@ handle_macos() {
     if check_docker_compose_installed; then
         print_success "Docker Compose は既に利用可能です"
         verify_docker_compose
-        return 0
+        exit 0
     fi
 
     print_info "macOSではDocker Desktopの使用を推奨します"
@@ -259,17 +259,17 @@ check_system_status() {
     if [ "$docker_installed" = true ] && [ "$compose_installed" = true ]; then
         print_success "Docker と Docker Compose は既にインストールされています"
         print_info "インストール処理をスキップして確認のみ実行します"
-        return 0
+        exit 0
     elif [ "$docker_installed" = true ]; then
         print_info "Docker はインストール済み、Docker Compose のみインストールします"
-        return 1
+        exit 1
     elif [ "$compose_installed" = true ]; then
         print_warning "Docker Compose は検出されましたが、Docker が見つかりません"
         print_info "Docker をインストールします"
-        return 2
+        exit 2
     else
         print_info "Docker と Docker Compose の両方をインストールします"
-        return 3
+        exit 3
     fi
 }
 
@@ -286,7 +286,7 @@ main() {
     # macOSの場合は別処理
     if [ "$os" = "macos" ]; then
         handle_macos
-        return 0
+        exit 0
     fi
 
     # Linux向けの処理

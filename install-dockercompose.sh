@@ -1,5 +1,6 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+
+set -euo pipefail
 
 # 色付きメッセージ用の関数
 print_info() {
@@ -32,8 +33,9 @@ detect_os() {
 
 # アーキテクチャの検出
 detect_architecture() {
-    local arch=$(uname -m)
-    case $arch in
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
         x86_64)
             echo "linux-x86_64"
             ;;
@@ -53,7 +55,8 @@ detect_architecture() {
 # Dockerがインストール済みかチェック
 check_docker_installed() {
     if command -v docker &> /dev/null; then
-        local docker_version=$(docker --version 2>/dev/null || echo "不明")
+        local docker_version
+        docker_version=$(docker --version 2>/dev/null || echo "不明")
         print_info "Docker は既にインストールされています: $docker_version"
         return 0
     else
@@ -64,7 +67,8 @@ check_docker_installed() {
 # Docker Composeがインストール済みかチェック
 check_docker_compose_installed() {
     if docker compose version &> /dev/null; then
-        local compose_version=$(docker compose version --short 2>/dev/null || echo "不明")
+        local compose_version
+        compose_version=$(docker compose version --short 2>/dev/null || echo "不明")
         print_info "Docker Compose は既にインストールされています: $compose_version"
         return 0
     else
@@ -97,7 +101,7 @@ install_docker() {
         sudo groupadd docker
     fi
     print_info "ユーザーをdockerグループに追加中..."
-    sudo usermod -aG docker $USER
+    sudo usermod -aG docker "$USER"
 
     # Dockerサービスの開始と有効化
     print_info "Dockerサービスを開始・有効化中..."
@@ -137,7 +141,8 @@ verify_docker() {
 # Docker Composeの最新バージョンを取得
 get_latest_version() {
     print_info "Docker Composeの最新バージョンを取得中..."
-    local latest_version=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    local latest_version
+    latest_version=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     if [ -z "$latest_version" ]; then
         print_error "最新バージョンの取得に失敗しました"
         exit 1
@@ -147,8 +152,8 @@ get_latest_version() {
 
 # Docker Composeをダウンロードしてインストール
 install_docker_compose() {
-    local version=$1
-    local arch=$2
+    local version="$1"
+    local arch="$2"
 
     print_info "Docker Composeのインストールを開始します..."
 
@@ -160,9 +165,9 @@ install_docker_compose() {
 
     local plugin_dir="$HOME/.docker/cli-plugins"
     local binary_name="docker-compose"
-    local download_url="https://github.com/docker/compose/releases/download/${version}/docker-compose-${arch}"
+    local download_url="https://github.com/docker/compose/releases/download/$version/docker-compose-$arch"
 
-    print_info "Docker Compose ${version} をダウンロード中..."
+    print_info "Docker Compose $version をダウンロード中..."
 
     # プラグインディレクトリを作成
     mkdir -p "$plugin_dir"
@@ -185,7 +190,8 @@ verify_docker_compose() {
     print_info "Docker Composeのインストールを確認中..."
 
     if docker compose version &> /dev/null; then
-        local installed_version=$(docker compose version --short)
+        local installed_version
+        installed_version=$(docker compose version --short)
         print_success "Docker Compose v2 が正常に動作しています"
         print_info "バージョン: $installed_version"
 
@@ -221,9 +227,10 @@ handle_macos() {
     print_info "Docker Desktopのダウンロード："
     echo "https://www.docker.com/products/docker-desktop/"
     echo ""
-    read -p "Docker Desktopをインストール済みですか？ (y/n): " -n 1 -r
+    local yn
+    read -r -p "Docker Desktopをインストール済みですか？ (y/n): " yn
     echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if [[ "$yn" =~ ^[Yy]$ ]]; then
         verify_docker_compose
     else
         print_info "Docker Desktopをインストールしてから再実行してください"
@@ -269,7 +276,8 @@ main() {
     echo "============================================================"
 
     # OS検出
-    local os=$(detect_os)
+    local os
+    os=$(detect_os)
     print_info "検出されたOS: $os"
 
     # macOSの場合は別処理
@@ -286,7 +294,8 @@ main() {
     local status=$?
 
     # アーキテクチャの検出
-    local arch=$(detect_architecture)
+    local arch
+    arch=$(detect_architecture)
     print_info "検出されたアーキテクチャ: $arch"
 
     # 状態に応じた処理
@@ -299,7 +308,8 @@ main() {
         1)
             # Dockerのみインストール済み
             verify_docker
-            local latest_version=$(get_latest_version)
+            local latest_version
+            latest_version=$(get_latest_version)
             print_info "最新バージョン: $latest_version"
             install_docker_compose "$latest_version" "$arch"
             verify_docker_compose
@@ -313,9 +323,10 @@ main() {
                 echo "newgrp docker"
                 echo "または、ログアウト後に再ログインしてください"
                 echo ""
-                read -p "新しいグループ権限で続行しますか？ (y/n): " -n 1 -r
+                local yn
+                read -r -p "新しいグループ権限で続行しますか？ (y/n): " yn
                 echo
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                if [[ ! "$yn" =~ ^[Yy]$ ]]; then
                     print_info "スクリプトを終了します。権限設定後に再実行してください。"
                     exit 0
                 fi
@@ -331,15 +342,17 @@ main() {
                 echo "newgrp docker"
                 echo "または、ログアウト後に再ログインしてください"
                 echo ""
-                read -p "新しいグループ権限で続行しますか？ (y/n): " -n 1 -r
+                local yn
+                read -r -p "新しいグループ権限で続行しますか？ (y/n): " yn
                 echo
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                if [[ ! "$yn" =~ ^[Yy]$ ]]; then
                     print_info "スクリプトを終了します。権限設定後に再実行してください。"
                     exit 0
                 fi
             fi
 
-            local latest_version=$(get_latest_version)
+            local latest_version
+            latest_version=$(get_latest_version)
             print_info "最新バージョン: $latest_version"
             install_docker_compose "$latest_version" "$arch"
             verify_docker_compose

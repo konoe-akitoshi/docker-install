@@ -91,9 +91,13 @@ install_docker() {
         exit 1  
     fi  
       
-    # ユーザーをdockerグループに追加  
-    print_info "ユーザーをdockerグループに追加中..."  
-    sudo usermod -aG docker $USER  
+    # dockerグループが存在しない場合は作成し、ユーザーを追加
+    if ! getent group docker > /dev/null; then
+        print_info "dockerグループが存在しないため作成します..."
+        sudo groupadd docker
+    fi
+    print_info "ユーザーをdockerグループに追加中..."
+    sudo usermod -aG docker $USER
       
     # Dockerサービスの開始と有効化  
     print_info "Dockerサービスを開始・有効化中..."  

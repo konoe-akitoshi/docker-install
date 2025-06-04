@@ -92,6 +92,8 @@ install_docker() {
         print_success "Dockerのインストールが完了しました"
     else
         print_error "Dockerのインストールに失敗しました"
+        print_error "手動で以下のコマンドを実行してください："
+        echo "  curl -fsSL https://get.docker.com | sh"
         exit 1
     fi
 

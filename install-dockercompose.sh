@@ -297,7 +297,7 @@ main() {
 
     # システム状態確認
     local status
-    status=$(check_system_status)
+    status=$(check_system_status | tail -n 1)
 
     # アーキテクチャの検出
     local arch

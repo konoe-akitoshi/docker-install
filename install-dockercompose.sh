@@ -262,17 +262,17 @@ check_system_status() {
     if [ "$docker_installed" = true ] && [ "$compose_installed" = true ]; then
         print_success "Docker と Docker Compose は既にインストールされています"
         print_info "インストール処理をスキップして確認のみ実行します"
-        return 0
+        echo 0
     elif [ "$docker_installed" = true ]; then
         print_info "Docker はインストール済み、Docker Compose のみインストールします"
-        return 1
+        echo 1
     elif [ "$compose_installed" = true ]; then
         print_warning "Docker Compose は検出されましたが、Docker が見つかりません"
         print_info "Docker をインストールします"
-        return 2
+        echo 2
     else
         print_info "Docker と Docker Compose の両方をインストールします"
-        return 3
+        echo 3
     fi
 }
 
@@ -296,10 +296,8 @@ main() {
     print_info "Linuxシステム向けの処理を開始します"
 
     # システム状態確認
-    set +e
-    check_system_status
-    local status=$?
-    set -e
+    local status
+    status=$(check_system_status)
 
     # アーキテクチャの検出
     local arch

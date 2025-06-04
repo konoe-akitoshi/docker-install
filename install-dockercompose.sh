@@ -54,12 +54,15 @@ detect_architecture() {
 
 # Dockerがインストール済みかチェック
 check_docker_installed() {
+    set +e
     if command -v docker &> /dev/null; then
         local docker_version
         docker_version=$(docker --version 2>/dev/null || echo "不明")
         print_info "Docker は既にインストールされています: $docker_version"
+        set -e
         return 0
     else
+        set -e
         return 1
     fi
 }

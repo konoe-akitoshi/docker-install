@@ -296,13 +296,16 @@ main() {
     print_info "Linuxシステム向けの処理を開始します"
 
     # システム状態確認
+    set +e
     check_system_status
     local status=$?
+    set -e
 
     # アーキテクチャの検出
     local arch
     arch=$(detect_architecture)
     print_info "検出されたアーキテクチャ: $arch"
+print_info "システム状態の判定結果: $status"
 
     # 状態に応じた処理
     case $status in

@@ -259,17 +259,17 @@ check_system_status() {
     if [ "$docker_installed" = true ] && [ "$compose_installed" = true ]; then
         print_success "Docker と Docker Compose は既にインストールされています"
         print_info "インストール処理をスキップして確認のみ実行します"
-        exit 0
+        return 0
     elif [ "$docker_installed" = true ]; then
         print_info "Docker はインストール済み、Docker Compose のみインストールします"
-        exit 1
+        return 1
     elif [ "$compose_installed" = true ]; then
         print_warning "Docker Compose は検出されましたが、Docker が見つかりません"
         print_info "Docker をインストールします"
-        exit 2
+        return 2
     else
         print_info "Docker と Docker Compose の両方をインストールします"
-        exit 3
+        return 3
     fi
 }
 

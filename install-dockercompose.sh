@@ -88,14 +88,14 @@ install_docker() {
 
     # Dockerの公式インストールスクリプトを実行
     print_info "Docker公式インストールスクリプトを詳細ログ付きで実行中..."
-    if curl -fsSL https://get.docker.com | sh -x 2>&1 | tee /tmp/docker-install.log; then
+    if curl -fsSL https://get.docker.com | sh -x 2>&1 | tee "$HOME/docker-install.log"; then
         print_success "Dockerのインストールが完了しました"
-        print_info "インストール詳細ログ: /tmp/docker-install.log"
+        print_info "インストール詳細ログ: $HOME/docker-install.log"
     else
         print_error "Dockerのインストールに失敗しました"
         print_error "手動で以下のコマンドを実行してください："
-        echo "  curl -fsSL https://get.docker.com | sh -x 2>&1 | tee /tmp/docker-install.log"
-        print_error "詳細ログ: /tmp/docker-install.log を確認してください"
+        echo "  curl -fsSL https://get.docker.com | sh -x 2>&1 | tee ~/docker-install.log"
+        print_error "詳細ログ: $HOME/docker-install.log を確認してください"
         exit 1
     fi
 

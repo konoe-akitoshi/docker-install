@@ -58,9 +58,9 @@ check_docker_installed() {
         local docker_version
         docker_version=$(docker --version 2>/dev/null || echo "不明")
         print_info "Docker は既にインストールされています: $docker_version"
-        exit 0
+        return 0
     else
-        exit 1
+        return 1
     fi
 }
 
@@ -70,9 +70,9 @@ check_docker_compose_installed() {
         local compose_version
         compose_version=$(docker compose version --short 2>/dev/null || echo "不明")
         print_info "Docker Compose は既にインストールされています: $compose_version"
-        exit 0
+        return 0
     else
-        exit 1
+        return 1
     fi
 }
 

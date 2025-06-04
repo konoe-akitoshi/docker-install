@@ -50,13 +50,35 @@ detect_architecture() {
     esac  
 }  
   
+# Dockerがインストール済みかチェック  
+check_docker_installed() {  
+    if command -v docker &> /dev/null; then  
+        local docker_version=$(docker --version 2>/dev/null || echo "不明")  
+        print_info "Docker は既にインストールされています: $docker_version"  
+        return 0  
+    else  
+        return 1  
+    fi  
+}  
+  
+# Docker Composeがインストール済みかチェック  
+check_docker_compose_installed() {  
+    if docker compose version &> /dev/null; then  
+        local compose_version=$(docker compose version --short 2>/dev/null || echo "不明")  
+        print_info "Docker Compose は既にインストールされています: $compose_version"  
+        return 0  
+    else  
+        return 1  
+    fi  
+}  
+  
 # Dockerのインストール  
 install_docker() {  
     print_info "Dockerのインストールを開始します..."  
       
     # Dockerがすでにインストールされているかチェック  
-    if command -v docker &> /dev/null; then  
-        print_info "Dockerは既にインストールされています"  
+    if check_docker_installed; then  
+        print_success "Dockerのインストールをスキップします"  
         return 0  
     fi  
       
@@ -123,6 +145,15 @@ get_latest_version() {
 install_docker_compose() {  
     local version=$1  
     local arch=$2  
+      
+    print_info "Docker Composeのインストールを開始します..."  
+      
+    # Docker Composeがすでにインストールされているかチェック  
+    if check_docker_compose_installed; then  
+        print_success "Docker Composeのインストールをスキップします"  
+        return 0  
+    fi  
+      
     local plugin_dir="$HOME/.docker/cli-plugins"  
     local binary_name="docker-compose"  
     local download_url="https://github.com/docker/compose/releases/download/${version}/docker-compose-${arch}"  
@@ -151,8 +182,8 @@ verify_docker_compose() {
       
     if docker compose version &> /dev/null; then  
         local installed_version=$(docker compose version --short)  
-        print_success "Docker Compose v2 が正常にインストールされました"  
-        print_info "インストールされたバージョン: $installed_version"  
+        print_success "Docker Compose v2 が正常に動作しています"  
+        print_info "バージョン: $installed_version"  
           
         # 使用例を表示  
         echo ""  
@@ -172,6 +203,14 @@ verify_docker_compose() {
 # macOS用の処理  
 handle_macos() {  
     print_info "macOSが検出されました"  
+      
+    # Docker Composeがすでに利用可能かチェック  
+    if check_docker_compose_installed; then  
+        print_success "Docker Compose は既に利用可能です"  
+        verify_docker_compose  
+        return 0  
+    fi  
+      
     print_info "macOSではDocker Desktopの使用を推奨します"  
     print_warning "Docker DesktopにはDocker Compose v2が含まれています"  
     echo ""  
@@ -188,9 +227,41 @@ handle_macos() {
     fi  
 }  
   
+# システム状態の確認  
+check_system_status() {  
+    print_info "システム状態を確認中..."  
+      
+    local docker_installed=false  
+    local compose_installed=false  
+      
+    if check_docker_installed; then  
+        docker_installed=true  
+    fi  
+      
+    if check_docker_compose_installed; then  
+        compose_installed=true  
+    fi  
+      
+    if [ "$docker_installed" = true ] && [ "$compose_installed" = true ]; then  
+        print_success "Docker と Docker Compose は既にインストールされています"  
+        print_info "インストール処理をスキップして確認のみ実行します"  
+        return 0  
+    elif [ "$docker_installed" = true ]; then  
+        print_info "Docker はインストール済み、Docker Compose のみインストールします"  
+        return 1  
+    elif [ "$compose_installed" = true ]; then  
+        print_warning "Docker Compose は検出されましたが、Docker が見つかりません"  
+        print_info "Docker をインストールします"  
+        return 2  
+    else  
+        print_info "Docker と Docker Compose の両方をインストールします"  
+        return 3  
+    fi  
+}  
+  
 # メイン処理  
 main() {  
-    print_info "Docker & Docker Compose v2 完全インストールスクリプト開始"  
+    print_info "Docker & Docker Compose v2 スマートインストールスクリプト開始"  
     echo "============================================================"  
       
     # OS検出  
@@ -204,53 +275,83 @@ main() {
     fi  
       
     # Linux向けの処理  
-    print_info "Linuxシステム向けのインストールを開始します"  
+    print_info "Linuxシステム向けの処理を開始します"  
+      
+    # システム状態確認  
+    check_system_status  
+    local status=$?  
       
     # アーキテクチャの検出  
     local arch=$(detect_architecture)  
     print_info "検出されたアーキテクチャ: $arch"  
       
-    # Dockerのインストール  
-    install_docker  
+    # 状態に応じた処理  
+    case $status in  
+        0)  
+            # 両方インストール済み - 確認のみ  
+            verify_docker  
+            verify_docker_compose  
+            ;;  
+        1)  
+            # Dockerのみインストール済み  
+            verify_docker  
+            local latest_version=$(get_latest_version)  
+            print_info "最新バージョン: $latest_version"  
+            install_docker_compose "$latest_version" "$arch"  
+            verify_docker_compose  
+            ;;  
+        2)  
+            # Docker Composeのみインストール済み（異常な状態）  
+            install_docker  
+            if ! verify_docker; then  
+                print_warning "Dockerの権限設定のため、新しいシェルセッションが必要です"  
+                print_info "以下のコマンドを実行してください："  
+                echo "newgrp docker"  
+                echo "または、ログアウト後に再ログインしてください"  
+                echo ""  
+                read -p "新しいグループ権限で続行しますか？ (y/n): " -n 1 -r  
+                echo  
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then  
+                    print_info "スクリプトを終了します。権限設定後に再実行してください。"  
+                    exit 0  
+                fi  
+            fi  
+            verify_docker_compose  
+            ;;  
+        3)  
+            # 両方未インストール  
+            install_docker  
+            if ! verify_docker; then  
+                print_warning "Dockerの権限設定のため、新しいシェルセッションが必要です"  
+                print_info "以下のコマンドを実行してください："  
+                echo "newgrp docker"  
+                echo "または、ログアウト後に再ログインしてください"  
+                echo ""  
+                read -p "新しいグループ権限で続行しますか？ (y/n): " -n 1 -r  
+                echo  
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then  
+                    print_info "スクリプトを終了します。権限設定後に再実行してください。"  
+                    exit 0  
+                fi  
+            fi  
+              
+            local latest_version=$(get_latest_version)  
+            print_info "最新バージョン: $latest_version"  
+            install_docker_compose "$latest_version" "$arch"  
+            verify_docker_compose  
+            ;;  
+    esac  
       
-    # Dockerの動作確認（失敗した場合は権限の問題の可能性）  
-    if ! verify_docker; then  
-        print_warning "Dockerの権限設定のため、新しいシェルセッションが必要です"  
-        print_info "以下のコマンドを実行してください："  
-        echo "newgrp docker"  
-        echo "または、ログアウト後に再ログインしてください"  
-        echo ""  
-        read -p "新しいグループ権限で続行しますか？ (y/n): " -n 1 -r  
-        echo  
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then  
-            print_info "スクリプトを終了します。権限設定後に再実行してください。"  
-            exit 0  
-        fi  
-    fi  
-      
-    # Docker Composeの最新バージョン取得  
-    local latest_version=$(get_latest_version)  
-    print_info "最新バージョン: $latest_version"  
-      
-    # Docker Composeのインストール  
-    install_docker_compose "$latest_version" "$arch"  
-      
-    # インストール確認  
-    if verify_docker_compose; then  
-        print_success "全てのインストールが完了しました！"  
-        echo ""  
-        print_info "サンプルのcompose.yamlファイルを作成してテストできます："  
-        echo "mkdir test-compose && cd test-compose"  
-        echo "cat > compose.yaml << 'EOF'"  
-        echo "services:"  
-        echo "  hello-world:"  
-        echo "    image: hello-world"  
-        echo "EOF"  
-        echo "docker compose up"  
-    else  
-        print_error "インストールに問題があります"  
-        exit 1  
-    fi  
+    print_success "全ての処理が完了しました！"  
+    echo ""  
+    print_info "サンプルのcompose.yamlファイルを作成してテストできます："  
+    echo "mkdir test-compose && cd test-compose"  
+    echo "cat > compose.yaml << 'EOF'"  
+    echo "services:"  
+    echo "  hello-world:"  
+    echo "    image: hello-world"  
+    echo "EOF"  
+    echo "docker compose up"  
 }  
   
 # スクリプト実行  

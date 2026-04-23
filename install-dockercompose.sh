@@ -2,21 +2,21 @@
 
 set -eo pipefail
 
-# 色付きメッセージ用の関数
+# 色付きメッセージ用の関数（stderrに出力し、stdoutとの混在を防ぐ）
 print_info() {
-    echo -e "\033[34m[INFO]\033[0m $1"
+    echo -e "\033[34m[INFO]\033[0m $1" >&2
 }
 
 print_success() {
-    echo -e "\033[32m[SUCCESS]\033[0m $1"
+    echo -e "\033[32m[SUCCESS]\033[0m $1" >&2
 }
 
 print_error() {
-    echo -e "\033[31m[ERROR]\033[0m $1"
+    echo -e "\033[31m[ERROR]\033[0m $1" >&2
 }
 
 print_warning() {
-    echo -e "\033[33m[WARNING]\033[0m $1"
+    echo -e "\033[33m[WARNING]\033[0m $1" >&2
 }
 
 # OSの検出
@@ -69,12 +69,15 @@ check_docker_installed() {
 
 # Docker Composeがインストール済みかチェック
 check_docker_compose_installed() {
+    set +e
     if docker compose version &> /dev/null; then
         local compose_version
         compose_version=$(docker compose version --short 2>/dev/null || echo "不明")
         print_info "Docker Compose は既にインストールされています: $compose_version"
+        set -e
         return 0
     else
+        set -e
         return 1
     fi
 }
@@ -86,19 +89,18 @@ install_docker() {
     # Dockerがすでにインストールされているかチェック
     if check_docker_installed; then
         print_success "Dockerのインストールをスキップします"
-        exit 0
+        return 0
     fi
 
     # Dockerの公式インストールスクリプトを実行
-    print_info "Docker公式インストールスクリプトを詳細ログ付きで実行中..."
-    print_info "Docker公式インストールスクリプトを詳細デバッグ出力付きで実行中..."
+    print_info "Docker公式インストールスクリプトを実行中..."
     if curl -fsSL https://get.docker.com | bash -x; then
         print_success "Dockerのインストールが完了しました"
     else
         print_error "Dockerのインストールに失敗しました"
         print_error "手動で以下のコマンドを実行してください："
         echo "  curl -fsSL https://get.docker.com | bash -x"
-        exit 1
+        return 1
     fi
 
     # dockerグループが存在しない場合は作成し、ユーザーを追加
@@ -109,10 +111,9 @@ install_docker() {
     print_info "ユーザーをdockerグループに追加中..."
     sudo usermod -aG docker "$USER"
 
-    # Dockerサービスの開始と有効化
-    print_info "Dockerサービスを開始・有効化中..."
-    sudo systemctl start docker
-    sudo systemctl enable docker
+    # containerdサービスの有効化（Dockerサービスはget.docker.comが自動で開始・有効化済み）
+    print_info "containerdサービスを有効化中..."
+    sudo systemctl enable containerd.service
 
     print_success "Dockerの設定が完了しました"
     print_warning "新しいグループ権限を有効にするため、以下のいずれかを実行してください："
@@ -127,7 +128,7 @@ verify_docker() {
 
     if ! command -v docker &> /dev/null; then
         print_error "Dockerがインストールされていません"
-        exit 1
+        return 1
     fi
 
     # Dockerデーモンが動作しているかチェック
@@ -137,11 +138,11 @@ verify_docker() {
         echo "  1. sudo systemctl start docker"
         echo "  2. sudo usermod -aG docker \$USER"
         echo "  3. newgrp docker または再ログイン"
-        exit 1
+        return 1
     fi
 
     print_success "Dockerが正常に動作しています"
-    exit 0
+    return 0
 }
 
 # Docker Composeの最新バージョンを取得
@@ -166,7 +167,7 @@ install_docker_compose() {
     # Docker Composeがすでにインストールされているかチェック
     if check_docker_compose_installed; then
         print_success "Docker Composeのインストールをスキップします"
-        exit 0
+        return 0
     fi
 
     local plugin_dir="$HOME/.docker/cli-plugins"
@@ -183,7 +184,7 @@ install_docker_compose() {
         print_success "ダウンロード完了"
     else
         print_error "ダウンロードに失敗しました"
-        exit 1
+        return 1
     fi
 
     # 実行権限を付与
@@ -209,10 +210,10 @@ verify_docker_compose() {
         echo "  docker compose logs       # ログを表示"
         echo "  docker compose ps         # 実行中のコンテナを表示"
         echo "  docker compose restart    # サービスを再起動"
-        exit 0
+        return 0
     else
         print_error "Docker Composeのインストール確認に失敗しました"
-        exit 1
+        return 1
     fi
 }
 
@@ -297,13 +298,13 @@ main() {
 
     # システム状態確認
     local status
-    status=$(check_system_status | tail -n 1)
+    status=$(check_system_status)
 
     # アーキテクチャの検出
     local arch
     arch=$(detect_architecture)
     print_info "検出されたアーキテクチャ: $arch"
-print_info "システム状態の判定結果: $status"
+    print_info "システム状態の判定結果: $status"
 
     # 状態に応じた処理
     case $status in

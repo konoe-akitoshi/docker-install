@@ -116,14 +116,12 @@ install_docker() {
     sudo systemctl enable containerd.service
 
     print_success "Dockerの設定が完了しました"
-    print_warning "新しいグループ権限を有効にするため、以下のいずれかを実行してください："
-    echo "  1. newgrp docker"
-    echo "  2. ログアウト後、再ログイン"
-    echo "  3. このスクリプトを再実行"
 }
 
 # Dockerの動作確認
+# post_install=true の場合、sg経由でグループ反映を確認（インストール直後に使用）
 verify_docker() {
+    local post_install="${1:-false}"
     print_info "Dockerの動作を確認中..."
 
     if ! command -v docker &> /dev/null; then
@@ -132,13 +130,21 @@ verify_docker() {
     fi
 
     # Dockerデーモンが動作しているかチェック
-    if ! docker info &> /dev/null; then
-        print_error "Dockerデーモンが動作していないか、権限がありません"
-        print_info "以下を確認してください："
-        echo "  1. sudo systemctl start docker"
-        echo "  2. sudo usermod -aG docker \$USER"
-        echo "  3. newgrp docker または再ログイン"
-        return 1
+    if [ "$post_install" = true ]; then
+        # インストール直後はグループが現在のセッションに未反映のため sg 経由で確認
+        if ! sg docker -c "docker info" &> /dev/null; then
+            print_error "Dockerデーモンが動作していないか、グループ設定に問題があります"
+            return 1
+        fi
+    else
+        if ! docker info &> /dev/null; then
+            print_error "Dockerデーモンが動作していないか、権限がありません"
+            print_info "以下を確認してください："
+            echo "  1. sudo systemctl start docker"
+            echo "  2. sudo usermod -aG docker \$USER"
+            echo "  3. newgrp docker または再ログイン"
+            return 1
+        fi
     fi
 
     print_success "Dockerが正常に動作しています"
@@ -306,6 +312,8 @@ main() {
     print_info "検出されたアーキテクチャ: $arch"
     print_info "システム状態の判定結果: $status"
 
+    local need_relogin=false
+
     # 状態に応じた処理
     case $status in
         0)
@@ -325,49 +333,35 @@ main() {
         2)
             # Docker Composeのみインストール済み（異常な状態）
             install_docker
-            if ! verify_docker; then
-                print_warning "Dockerの権限設定のため、新しいシェルセッションが必要です"
-                print_info "以下のコマンドを実行してください："
-                echo "newgrp docker"
-                echo "または、ログアウト後に再ログインしてください"
-                echo ""
-                local yn
-                read -r -p "新しいグループ権限で続行しますか？ (y/n): " yn
-                echo
-                if [[ ! "$yn" =~ ^[Yy]$ ]]; then
-                    print_info "スクリプトを終了します。権限設定後に再実行してください。"
-                    exit 0
-                fi
-            fi
+            # インストール直後はグループ未反映のため sudo で検証
+            verify_docker true
             verify_docker_compose
+            need_relogin=true
             ;;
         3)
             # 両方未インストール
             install_docker
-            if ! verify_docker; then
-                print_warning "Dockerの権限設定のため、新しいシェルセッションが必要です"
-                print_info "以下のコマンドを実行してください："
-                echo "newgrp docker"
-                echo "または、ログアウト後に再ログインしてください"
-                echo ""
-                local yn
-                read -r -p "新しいグループ権限で続行しますか？ (y/n): " yn
-                echo
-                if [[ ! "$yn" =~ ^[Yy]$ ]]; then
-                    print_info "スクリプトを終了します。権限設定後に再実行してください。"
-                    exit 0
-                fi
-            fi
+            # インストール直後はグループ未反映のため sudo で検証
+            verify_docker true
 
             local latest_version
             latest_version=$(get_latest_version)
             print_info "最新バージョン: $latest_version"
             install_docker_compose "$latest_version" "$arch"
             verify_docker_compose
+            need_relogin=true
             ;;
     esac
 
     print_success "全ての処理が完了しました！"
+
+    if [ "$need_relogin" = true ]; then
+        echo ""
+        print_warning "sudo なしで docker を使うには、再ログインが必要です："
+        echo "  ログアウト後、再ログインしてください"
+        echo "  または: newgrp docker（現在のターミナルのみ有効）"
+    fi
+
     echo ""
     print_info "サンプルのcompose.yamlファイルを作成してテストできます："
     echo "mkdir test-compose && cd test-compose"

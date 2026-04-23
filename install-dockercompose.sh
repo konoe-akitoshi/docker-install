@@ -19,6 +19,20 @@ print_warning() {
     echo -e "\033[33m[WARNING]\033[0m $1" >&2
 }
 
+# root権限チェック
+check_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "このスクリプトはroot権限で実行してください"
+        echo "  sudo $0" >&2
+        exit 1
+    fi
+}
+
+# sudo経由で実行された場合の実ユーザー名を取得
+get_real_user() {
+    echo "${SUDO_USER:-$USER}"
+}
+
 # OSの検出
 detect_os() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -86,13 +100,12 @@ check_docker_compose_installed() {
 install_docker() {
     print_info "Dockerのインストールを開始します..."
 
-    # Dockerがすでにインストールされているかチェック
     if check_docker_installed; then
         print_success "Dockerのインストールをスキップします"
         return 0
     fi
 
-    # Dockerの公式インストールスクリプトを実行
+    # Dockerの公式インストールスクリプトを実行（root で実行中なので sudo 不要）
     print_info "Docker公式インストールスクリプトを実行中..."
     if curl -fsSL https://get.docker.com | bash -x; then
         print_success "Dockerのインストールが完了しました"
@@ -103,25 +116,29 @@ install_docker() {
         return 1
     fi
 
-    # dockerグループが存在しない場合は作成し、ユーザーを追加
+    # 実ユーザーをdockerグループに追加
+    local real_user
+    real_user=$(get_real_user)
+
     if ! getent group docker > /dev/null; then
         print_info "dockerグループが存在しないため作成します..."
-        sudo groupadd docker
+        groupadd docker
     fi
-    print_info "ユーザーをdockerグループに追加中..."
-    sudo usermod -aG docker "$USER"
+
+    if [ "$real_user" != "root" ]; then
+        print_info "ユーザー '$real_user' をdockerグループに追加中..."
+        usermod -aG docker "$real_user"
+    fi
 
     # containerdサービスの有効化（Dockerサービスはget.docker.comが自動で開始・有効化済み）
     print_info "containerdサービスを有効化中..."
-    sudo systemctl enable containerd.service
+    systemctl enable containerd.service
 
     print_success "Dockerの設定が完了しました"
 }
 
 # Dockerの動作確認
-# post_install=true の場合、sg経由でグループ反映を確認（インストール直後に使用）
 verify_docker() {
-    local post_install="${1:-false}"
     print_info "Dockerの動作を確認中..."
 
     if ! command -v docker &> /dev/null; then
@@ -129,22 +146,12 @@ verify_docker() {
         return 1
     fi
 
-    # Dockerデーモンが動作しているかチェック
-    if [ "$post_install" = true ]; then
-        # インストール直後はグループが現在のセッションに未反映のため sg 経由で確認
-        if ! sg docker -c "docker info" &> /dev/null; then
-            print_error "Dockerデーモンが動作していないか、グループ設定に問題があります"
-            return 1
-        fi
-    else
-        if ! docker info &> /dev/null; then
-            print_error "Dockerデーモンが動作していないか、権限がありません"
-            print_info "以下を確認してください："
-            echo "  1. sudo systemctl start docker"
-            echo "  2. sudo usermod -aG docker \$USER"
-            echo "  3. newgrp docker または再ログイン"
-            return 1
-        fi
+    # root で実行中なのでデーモン確認は直接可能
+    if ! docker info &> /dev/null; then
+        print_error "Dockerデーモンが動作していません"
+        print_info "以下を確認してください："
+        echo "  systemctl start docker"
+        return 1
     fi
 
     print_success "Dockerが正常に動作しています"
@@ -163,20 +170,19 @@ get_latest_version() {
     echo "$latest_version"
 }
 
-# Docker Composeをダウンロードしてインストール
+# Docker Composeをダウンロードしてインストール（システムワイド）
 install_docker_compose() {
     local version="$1"
     local arch="$2"
 
     print_info "Docker Composeのインストールを開始します..."
 
-    # Docker Composeがすでにインストールされているかチェック
     if check_docker_compose_installed; then
         print_success "Docker Composeのインストールをスキップします"
         return 0
     fi
 
-    local plugin_dir="$HOME/.docker/cli-plugins"
+    local plugin_dir="/usr/local/lib/docker/cli-plugins"
     local binary_name="docker-compose"
     local download_url="https://github.com/docker/compose/releases/download/$version/docker-compose-$arch"
 
@@ -293,13 +299,15 @@ main() {
     os=$(detect_os)
     print_info "検出されたOS: $os"
 
-    # macOSの場合は別処理
+    # macOSの場合はroot不要（Docker Desktopを案内するだけ）
     if [ "$os" = "macos" ]; then
         handle_macos
         exit 0
     fi
 
-    # Linux向けの処理
+    # Linux向けの処理：root権限を要求
+    check_root
+
     print_info "Linuxシステム向けの処理を開始します"
 
     # システム状態確認
@@ -311,8 +319,6 @@ main() {
     arch=$(detect_architecture)
     print_info "検出されたアーキテクチャ: $arch"
     print_info "システム状態の判定結果: $status"
-
-    local need_relogin=false
 
     # 状態に応じた処理
     case $status in
@@ -339,19 +345,16 @@ main() {
         2)
             # Docker Composeのみインストール済み（異常な状態）
             install_docker
-            # インストール直後はグループ未反映のため sg 経由で検証
-            if ! verify_docker true; then
+            if ! verify_docker; then
                 print_error "Dockerの検証に失敗しました。手動で確認してください"
                 exit 1
             fi
             verify_docker_compose
-            need_relogin=true
             ;;
         3)
             # 両方未インストール
             install_docker
-            # インストール直後はグループ未反映のため sg 経由で検証
-            if ! verify_docker true; then
+            if ! verify_docker; then
                 print_error "Dockerの検証に失敗しました。手動で確認してください"
                 exit 1
             fi
@@ -366,14 +369,16 @@ main() {
                 install_docker_compose "$latest_version" "$arch"
             fi
             verify_docker_compose
-            need_relogin=true
             ;;
     esac
 
     print_success "全ての処理が完了しました！"
 
-    if [ "$need_relogin" = true ]; then
+    local real_user
+    real_user=$(get_real_user)
+    if [ "$real_user" != "root" ]; then
         echo ""
+        print_info "ユーザー '$real_user' は docker グループに追加済みです"
         print_warning "sudo なしで docker を使うには、再ログインが必要です："
         echo "  ログアウト後、再ログインしてください"
         echo "  または: newgrp docker（現在のターミナルのみ有効）"

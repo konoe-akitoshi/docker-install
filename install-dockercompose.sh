@@ -333,7 +333,7 @@ main() {
         2)
             # Docker Composeのみインストール済み（異常な状態）
             install_docker
-            # インストール直後はグループ未反映のため sudo で検証
+            # インストール直後はグループ未反映のため sg 経由で検証
             verify_docker true
             verify_docker_compose
             need_relogin=true
@@ -341,7 +341,7 @@ main() {
         3)
             # 両方未インストール
             install_docker
-            # インストール直後はグループ未反映のため sudo で検証
+            # インストール直後はグループ未反映のため sg 経由で検証
             verify_docker true
 
             local latest_version

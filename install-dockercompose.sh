@@ -158,7 +158,7 @@ get_latest_version() {
     latest_version=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     if [ -z "$latest_version" ]; then
         print_error "最新バージョンの取得に失敗しました"
-        exit 1
+        return 1
     fi
     echo "$latest_version"
 }
@@ -318,12 +318,18 @@ main() {
     case $status in
         0)
             # 両方インストール済み - 確認のみ
-            verify_docker
+            if ! verify_docker; then
+                print_error "Dockerの検証に失敗しました"
+                exit 1
+            fi
             verify_docker_compose
             ;;
         1)
             # Dockerのみインストール済み
-            verify_docker
+            if ! verify_docker; then
+                print_error "Dockerの検証に失敗しました"
+                exit 1
+            fi
             local latest_version
             latest_version=$(get_latest_version)
             print_info "最新バージョン: $latest_version"
@@ -334,7 +340,10 @@ main() {
             # Docker Composeのみインストール済み（異常な状態）
             install_docker
             # インストール直後はグループ未反映のため sg 経由で検証
-            verify_docker true
+            if ! verify_docker true; then
+                print_error "Dockerの検証に失敗しました。手動で確認してください"
+                exit 1
+            fi
             verify_docker_compose
             need_relogin=true
             ;;
@@ -342,12 +351,20 @@ main() {
             # 両方未インストール
             install_docker
             # インストール直後はグループ未反映のため sg 経由で検証
-            verify_docker true
+            if ! verify_docker true; then
+                print_error "Dockerの検証に失敗しました。手動で確認してください"
+                exit 1
+            fi
 
-            local latest_version
-            latest_version=$(get_latest_version)
-            print_info "最新バージョン: $latest_version"
-            install_docker_compose "$latest_version" "$arch"
+            # get.docker.com が Compose プラグインもインストールするため、
+            # 既に入っている場合は手動インストールをスキップ
+            if ! check_docker_compose_installed; then
+                print_info "Docker Compose が get.docker.com に含まれていなかったため、手動でインストールします"
+                local latest_version
+                latest_version=$(get_latest_version)
+                print_info "最新バージョン: $latest_version"
+                install_docker_compose "$latest_version" "$arch"
+            fi
             verify_docker_compose
             need_relogin=true
             ;;

@@ -1,16 +1,17 @@
 # Docker & Docker Compose v2 インストールスクリプト
 
-このスクリプトは、Linux および macOS 環境で Docker と Docker Compose v2 を自動的にインストール・確認・設定するためのスマートスクリプトです。
+Linux および macOS 環境で Docker と Docker Compose v2 を自動的にインストール・確認・設定するためのスクリプトです。
 
 ---
 
 ## 特長
 
 * **Docker / Docker Compose の検出・インストール**
-* **最新の Docker Compose v2 を GitHub API から取得**
 * **OS（Linux/macOS）とアーキテクチャ（x86\_64 / arm64 など）を自動判別**
+* **get.docker.com による公式インストール（Compose プラグイン含む）**
+* **get.docker.com で Compose が入らなかった場合は GitHub から最新版を自動取得**
+* **Docker グループへのユーザー追加、containerd サービスの有効化まで対応**
 * **色付きログ出力による分かりやすい進捗表示**
-* **Docker グループへのユーザー追加、サービスの有効化まで対応**
 
 ---
 
@@ -23,8 +24,12 @@
 
 ## 使い方
 
+### Linux
+
+root 権限で実行してください。
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/konoe-akitoshi/docker-install/main/install-dockercompose.sh | bash
+curl -fsSL https://raw.githubusercontent.com/konoe-akitoshi/docker-install/main/install-dockercompose.sh | sudo bash
 ```
 
 または、ダウンロードして実行：
@@ -32,6 +37,14 @@ curl -fsSL https://raw.githubusercontent.com/konoe-akitoshi/docker-install/main/
 ```bash
 wget https://raw.githubusercontent.com/konoe-akitoshi/docker-install/main/install-dockercompose.sh
 chmod +x install-dockercompose.sh
+sudo ./install-dockercompose.sh
+```
+
+### macOS
+
+Docker Desktop の案内のみなので root 権限は不要です。
+
+```bash
 ./install-dockercompose.sh
 ```
 
@@ -39,11 +52,11 @@ chmod +x install-dockercompose.sh
 
 ## スクリプトの処理内容
 
-1. **OSとアーキテクチャの自動検出**
-2. **DockerとDocker Composeのインストール状況確認**
-3. **未インストールの場合は自動でインストールを実施**
-4. **Dockerグループへのユーザー追加とサービス有効化**
-5. **Docker Composeの最新バージョンをGitHubから取得してインストール**
+1. **OS とアーキテクチャの自動検出**
+2. **Docker と Docker Compose のインストール状況確認**
+3. **未インストールの場合は get.docker.com 経由で Docker をインストール**
+4. **Docker グループへの実ユーザー追加と containerd サービスの有効化**
+5. **Docker Compose が未インストールの場合は GitHub から最新版を取得してシステムワイドに配置**
 6. **インストール後の動作確認とサンプル使用例の表示**
 
 ---
@@ -65,6 +78,7 @@ docker compose up
 
 ## 注意点
 
+* Linux では **`sudo` で実行**してください。root 権限がない場合はエラーで終了します。
 * 初回実行後は、**新しいグループ権限を反映するためにログアウトまたは `newgrp docker` の実行が必要**です。
 * macOS の場合は **Docker Desktop のインストールが前提**です。
 
